@@ -1,0 +1,7 @@
+attrs==15.2.0
+effect==0.10.1
+funcsigs==0.4
+pyrsistent==0.11.10
+six==1.10.0
+wheel==0.24.0
+zope.interface==4.1.3
