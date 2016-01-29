@@ -36,6 +36,11 @@ extensions = [
     'sphinx.ext.viewcode',
 ]
 
+# Add the parent directory so ziffect can be included.
+doctest_path = [os.path.join(os.path.dirname(__file__), '..')]
+
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
 

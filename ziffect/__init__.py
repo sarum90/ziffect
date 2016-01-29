@@ -28,10 +28,19 @@ class _matchers(object):
         """
         return Not(Is(None))
 
+
 matchers = _matchers()
+"""
+matchers to match things.
+"""
 
 
 class argument(PClass):
+    """
+    Argument type
+
+    TODO(mewert): fill the rest of this in.
+    """
     type = field(type=type)
 
 
