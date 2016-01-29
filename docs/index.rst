@@ -46,19 +46,19 @@ Doctest example:
 .. doctest::
 
    >>> effect.Effect(int)
-  <Effect(intent=<type 'int'>, callbacks=[])>
+   Effect(intent=<type 'int'>, callbacks=[])
 
 Test-Output example:
 
 .. testcode::
 
-   effect.argument(type=int)
+   print ziffect.argument(type=int)
 
 This would output:
 
 .. testoutput::
 
-   This parrot wouldn't voom if you put 3000 volts through it!
+   argument(type=<type 'int'>)
 
 API
 ===
