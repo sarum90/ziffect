@@ -20,7 +20,10 @@ database. Reading values from and writing values to a database are certainly
 operations that have side-effects, so we believe this to be a good candidate
 use case for our new toy.
 
-.. note:: Apologies for this rather long example, I just wanted to walk through a
+.. admonition:: Aside
+  :class: hint
+
+  Apologies for this rather long example, I just wanted to walk through a
   sufficiently complex scenario as a matter of proving to myself that this
   library adds value.
 
@@ -30,6 +33,7 @@ use case for our new toy.
 
   from uuid import uuid4
   from pyrsistent import PClass, field
+  from six import text_type
   import json
 
   LATEST=-1
@@ -43,17 +47,17 @@ use case for our new toy.
     # NETWORK_ERROR = u'NETWORK_ERROR'
 
   class DBResponse(PClass):
-    status = field(type=unicode)
+    status = field(type=text_type)
     doc = field(initial=None)
     rev = field(type=[int, type(None)], initial=None)
 
     def __repr__(self):
-      result = unicode(self.status)
+      result = text_type(self.status)
       if self.rev is not None:
-        result += " rev={}".format(self.rev)
+        result += " rev=" + text_type(self.rev)
       if self.doc:
-        result += " {}".format(json.dumps(self.doc))
-      return 'DB Response<{}>'.format(result)
+        result += u" " + json.dumps(self.doc, sort_keys=True)
+      return u'DB Response<' + text_type(result) + u'>'
 
   class DB(object):
     def __init__(self):
@@ -86,7 +90,7 @@ and ``db.put(doc_id, rev, doc)``. As this is a fictional API, rather than
 giving a full spec, I will demonstrate how it works with a simple demo of
 functionality:
 
-.. doctest:: show_db
+.. doctest:: show_db_functionality
 
   >>> # Make a new db.
   >>> db = DB()
@@ -134,28 +138,141 @@ change on a document in the database. This code should take as inputs:
 - A pure function to execute on the document.
 
 The code will get the document from the database, execute the pure function on
-the document, and put it back in the database. If the PUT fails
+the document, and put it back in the database. If the ``put`` fails, then the
+code should get the latest version of the document, execute the pure function
+on the latest version of the document, attempt to ``put`` it again, and repeat
+until it succeeds.
 
 For good measure, this code can return the final version of the document.
 
+So let's take a stab at implementing this piece of code. We are using effect,
+so I guess that means we want to put ``db.get`` and ``db.put`` behind intents
+and performers, and then we want to create a function that returns an "effect
+generator" that can be performed by a dispatcher.
 
-Doctest example:
+.. admonition:: Aside
+  :class: hint
+  
+  I'm still pretty new to ``effect``, and playing around with how to do
+  good design in this paradigm. You may notice this in my tenative design
+  desisions. If you have any recommendations on how I could do it better, tell
+  me on github as an issue filed against
+  `ziffect <https://github.com/sarum90/ziffect/issues>`_.
 
-.. doctest::
+.. testcode:: effect_implementation
 
-   >>> 4
-   4
+  from effect import Effect, sync_performer, TypeDispatcher
 
-Test-Output example:
+  class GetIntent(object):
+    def __init__(self, doc_id, rev=LATEST):
+      self.doc_id = doc_id
+      self.rev = rev
 
-.. testcode::
 
-   import ziffect
-   a = ziffect.argument(type=int)
-   print(123)
+  def get_performer_generator(db):
+    @sync_performer
+    def get(dispatcher, intent):
+      return db.get(intent.doc_id, intent.rev)
+    return get
 
-This would output:
 
-.. testoutput::
+  class UpdateIntent(object):
+    def __init__(self, doc_id, rev, doc):
+      """
+      Slightly different API that the DB gives us, because we need to update a
+      document below rather than just put a new doc into the DB.
 
-   123
+      :param doc_id: The document id of the document to put in the database.
+      :param rev: The last revision gotten from the database for the document.
+        This update will put revision rev + 1 into the db.
+      :param doc: The new document to send to the server.
+      """
+      self.doc_id = doc_id
+      self.rev = rev
+      self.doc = doc
+
+
+  def update_performer_generator(db):
+    @sync_performer
+    def update(dispatcher, intent):
+      intent.rev += 1
+      return db.put(intent.doc_id, intent.rev, intent.doc)
+    return put
+      
+
+  def db_dispatcher(db):
+    return TypeDispatcher({
+      PutIntent: put_performer_generator(db),
+      UpdateIntent: update_performer_generator(db),
+    })
+
+Okay, so now we have the ``Effect`` -ive building blocks that we can use to
+create our implementation:
+
+.. testcode:: effect_implementation
+
+  from effect import sync_perform, ComposedDispatcher, base_dispatcher
+  from effect.do import do
+
+  @do
+  def execute_function(doc_id, pure_function):
+    result = yield Effect(GetIntent(doc_id=doc_id))
+    new_doc = pure_function(result.doc)
+    yield Effect(UpdateIntent(doc_id, result.rev, new_doc))
+
+
+  def sync_execute_function(db, doc_id, function):
+    """
+    Convenience wrapper to perform :func:`execute_function` on a database from
+    an interactive terminal.
+    """
+    dispatcher = ComposedDispatcher([
+      db_dispatcher(db),
+      base_dispatcher
+    ])
+    sync_perform(
+      dispatcher,
+      execute_function(
+        doc_id, function
+      )
+    )
+
+The implementation of ``execute_function`` should fairly obviously have bugs,
+but it's a good enough implementation that we can convince ourselves that the
+happy case works:
+
+.. doctest:: effect_implementation
+
+  >>> db = DB()
+  >>> doc_id = uuid4()
+  >>> doc = {"cat": "mouse", "count": 10}
+  >>> db.put(doc_id, 0, doc)
+  DB Response<OK rev=0>
+
+  >>> def increment(doc_id):
+  ...     return sync_execute_function(
+  ...        db,
+  ...        doc_id,
+  ...        lambda x: dict(x, count=x.get('count', 0) + 1)
+  ...     )
+
+  >>> increment(doc_id)
+  >>> db.get(doc_id)
+  DB Response<OK rev=1 {"cat": "mouse", "count": 11}>
+
+  >>> increment(doc_id)
+  >>> db.get(doc_id)
+  DB Response<OK rev=2 {"cat": "mouse", "count": 12}>
+
+  >>> increment(doc_id)
+  >>> db.get(doc_id)
+  DB Response<OK rev=3 {"cat": "mouse", "count": 13}>
+
+In the interest of test driven development, at this point we want to write our
+unit tests. They should fail, then we'll fix the implementation of
+``execute_function``, write more unit tests, etc.
+
+To be continued...
+
+
+.. There is another directive: .. testoutput:: if testinputs have outputs
