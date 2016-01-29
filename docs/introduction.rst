@@ -197,12 +197,12 @@ generator" that can be performed by a dispatcher.
     def update(dispatcher, intent):
       intent.rev += 1
       return db.put(intent.doc_id, intent.rev, intent.doc)
-    return put
+    return update
       
 
   def db_dispatcher(db):
     return TypeDispatcher({
-      PutIntent: put_performer_generator(db),
+      GetIntent: get_performer_generator(db),
       UpdateIntent: update_performer_generator(db),
     })
 
@@ -272,7 +272,6 @@ In the interest of test driven development, at this point we want to write our
 unit tests. They should fail, then we'll fix the implementation of
 ``execute_function``, write more unit tests, etc.
 
-To be continued...
 
 
 .. There is another directive: .. testoutput:: if testinputs have outputs
