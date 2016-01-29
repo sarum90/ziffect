@@ -45,20 +45,21 @@ Doctest example:
 
 .. doctest::
 
-   >>> effect.Effect(int)
-   Effect(intent=<type 'int'>, callbacks=[])
+   >>> 4
+   4
 
 Test-Output example:
 
 .. testcode::
 
-   print ziffect.argument(type=int)
+   a = ziffect.argument(type=int)
+   print 123
 
 This would output:
 
 .. testoutput::
 
-   argument(type=<type 'int'>)
+   123
 
 API
 ===
