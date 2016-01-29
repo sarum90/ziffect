@@ -1,6 +1,9 @@
 
 Introduction
-------------
+============
+
+Motivation
+----------
 
 The motivation for ``ziffect`` was an inner sensation that
 `effect <https://effect.readthedocs.org/>`_ was slightly incomplete, and with the
@@ -17,9 +20,9 @@ database. Reading values from and writing values to a database are certainly
 operations that have side-effects, so we believe this to be a good candidate
 use case for our new toy.
 
-Apologies for this rather long example, I just wanted to walk through a
-sufficiently complex scenario as a matter of proving to myself that this
-library adds value.
+.. note:: Apologies for this rather long example, I just wanted to walk through a
+  sufficiently complex scenario as a matter of proving to myself that this
+  library adds value.
 
 .. testsetup:: *
   
