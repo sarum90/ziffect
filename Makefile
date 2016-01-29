@@ -13,7 +13,11 @@ doctest:
 ifeq ($(TRAVIS_PYTHON_VERSION),3.2)
 	@echo "Not running doctests on python 3.2"
 else
+ifeq ($(TRAVIS_PYTHON_VERSION),pypy3)
+	@echo "Not running doctests on pypy3"
+else
 	cd docs/ && make doctest
+endif
 endif
 
 doc:
