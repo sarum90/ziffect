@@ -1,38 +1,20 @@
 
+"""
+The ziffect module.
+"""
+
 from __future__ import unicode_literals
 
 from effect import TypeDispatcher, Effect, sync_performer
 from pyrsistent import PClass, field, PClassMeta
 from six import add_metaclass, iteritems
-from testtools.matchers import Not, Is
 from funcsigs import signature
 
 __all__ = [
     'interface',
     'effects',
-    'matchers',
     'argument'
 ]
-
-
-class _matchers(object):
-    """
-    Hack implementation of the ziffect matchers.
-
-    Will be replaced by proper module.
-    """
-
-    def Provides(self, interface):
-        """
-        Matches if interface is provided by the matchee.
-        """
-        return Not(Is(None))
-
-
-matchers = _matchers()
-"""
-matchers to match things.
-"""
 
 
 class argument(PClass):

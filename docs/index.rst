@@ -11,58 +11,12 @@ Contents:
 .. toctree::
    :maxdepth: 2
 
+   introduction
+   api
+
 Indices and tables
 ===================
 
 * :ref:`genindex`
 * :ref:`modindex`
 * :ref:`search`
-
-
-The Ziffect module
-==================
-
-.. testsetup:: *
-
-   import ziffect
-   import effect
-
-Introduction
-------------
-
-The motivation for ``ziffect`` was an inner sensation that
-`effect <https://effect.readthedocs.org/>`_ was slightly incomplete, and with the
-help of `zope.interface <http://docs.zope.org/zope.interface/>`_ and
-`pyrsistent <https://pyrsistent.readthedocs.org/>`_ it could be made a lot
-better.
-
-Using Effect and Limitations
-----------------------------
-
-The parrot module is a module about parrots.
-
-Doctest example:
-
-.. doctest::
-
-   >>> 4
-   4
-
-Test-Output example:
-
-.. testcode::
-
-   a = ziffect.argument(type=int)
-   print 123
-
-This would output:
-
-.. testoutput::
-
-   123
-
-API
-===
-
-.. automodule:: ziffect
-  :members:
