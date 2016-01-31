@@ -44,6 +44,7 @@ def cleanup(lines):
             skip -= 1
             continue
         line = re.sub(r'0x[0-9a-f]*', get_print_addr, line)
+        line = line.replace(r'__builtin__.', r'')
         result.append(line)
 
     return '\n'.join(result)
