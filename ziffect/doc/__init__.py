@@ -35,12 +35,15 @@ def cleanup(lines):
 
     skip = 0
     for line in lines.splitlines():
-        line = re.sub(r'0x[0-9a-f]*', get_print_addr, line)
+        if not skip:
+            if 'fallback: Func(' in line:
+                skip = 1
         if not skip:
             line, skip = clean_filename(line)
         if skip > 0:
             skip -= 1
             continue
+        line = re.sub(r'0x[0-9a-f]*', get_print_addr, line)
         result.append(line)
 
     return '\n'.join(result)

@@ -350,9 +350,8 @@ Now a few iterations of TDD:
       intent, fmt_log()))
   AssertionError: Performer not found: <GetIntent object at 0x7fff0000>! Log follows:
   {{{
-  fallback: Func(func=<function do_execute_function at 0x7fff0001>, args=(), kwargs={})
   NOT FOUND: <GetIntent object at 0x7fff0000>
-  NEXT EXPECTED: <GetIntent object at 0x7fff0002>
+  NEXT EXPECTED: <GetIntent object at 0x7fff0001>
   }}}
   ...
     
