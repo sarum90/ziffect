@@ -11,11 +11,11 @@ help of `zope.interface <http://docs.zope.org/zope.interface/>`_ and
 `pyrsistent <https://pyrsistent.readthedocs.org/>`_ it could be made a lot
 better.
 
-Using Effect and Limitations
-----------------------------
+Coding with effect
+------------------
 
 Let's walk through an example to illustrate my grievances with the ``effect``
-library. For starters, lets say we are using ``effect`` to interact with a
+library. For starters, let's say we are using ``effect`` to interact with a
 database. Reading values from and writing values to a database are certainly
 operations that have side-effects, so we believe this to be a good candidate
 use case for our new toy.
@@ -31,10 +31,12 @@ use case for our new toy.
   
   from __future__ import print_function
 
+  import json
   from uuid import uuid4
+
   from pyrsistent import PClass, field
   from six import text_type
-  import json
+  from ziffect.doc import run_test
 
   LATEST=-1
 
@@ -220,12 +222,13 @@ create our implementation:
     new_doc = pure_function(result.doc)
     yield Effect(UpdateIntent(doc_id, result.rev, new_doc))
 
+We still don't technically have what we set out for, as this effect generator
+only takes two arguments, not the underlying db. So we'll add one more
+convenience function that we can play around with on the interpreter:
+
+.. testcode:: effect_implementation
 
   def sync_execute_function(db, doc_id, function):
-    """
-    Convenience wrapper to perform :func:`execute_function` on a database from
-    an interactive terminal.
-    """
     dispatcher = ComposedDispatcher([
       db_dispatcher(db),
       base_dispatcher
@@ -272,6 +275,86 @@ In the interest of test driven development, at this point we want to write our
 unit tests. They should fail, then we'll fix the implementation of
 ``execute_function``, write more unit tests, etc.
 
+.. testsetup:: effect_implementation
 
+  from testtools import TestCase
+
+.. testcode:: effect_implementation
+
+  from effect.testing import perform_sequence
+
+  class DBExecuteFunctionTests(TestCase):
+
+    def test_happy_case(self):
+      doc_id = uuid4()
+      doc_1 = {"test": "doc", "a": 1}
+      doc_1_u = {"test": "doc", "a": 2}
+      seq = [
+        (GetIntent(doc_id),
+          lambda _: DBResponse(DBStatus.OK, 0, doc_1)),
+
+        (UpdateIntent(doc_id, 1, doc_1_u),
+          lambda _: DBResponse(DBStatus.OK)),
+      ]
+      perform_sequence(seq, execute_function(
+          doc_id, lambda x: dict(x, a=x.get("a", 0) + 1)
+        )
+      )
+    
+    def test_sad_case(self):
+      doc_id = uuid4()
+      doc_1 = {"test": "doc", "a": 1}
+      doc_1_u = {"test": "doc", "a": 2}
+      doc_2 = {"test": "doc2", "a": 5}
+      doc_2_u = {"test": "doc2", "a": 6}
+      seq = [
+        (GetIntent(doc_id),
+          lambda _: DBResponse(DBStatus.OK, 0, doc_1)),
+
+        (UpdateIntent(doc_id, 1, doc_1_u),
+          lambda _: DBResponse(DBStatus.CONFLICT)),
+
+        (GetIntent(doc_id),
+          lambda _: DBResponse(DBStatus.OK, 1, doc_2)),
+
+        (UpdateIntent(doc_id, 2, doc_2_u),
+          lambda _: DBResponse(DBStatus.OK)),
+      ]
+      perform_sequence(seq, execute_function(
+          doc_id, lambda x: dict(x, a=x.get("a", 0) + 1)
+        )
+      )
+
+Now a few iterations of TDD:
+
+.. doctest:: effect_implementation
+
+  >>> run_test(DBExecuteFunctionTests)
+  FAILURE(test_happy_case)
+  Traceback (most recent call last):
+    File "<interactive-shell>", line 17, in test_happy_case
+    File "effect/testing.py", line 115, in perform_sequence
+      return sync_perform(dispatcher, eff)
+    File "effect/_sync.py", line 34, in sync_perform
+      six.reraise(*errors[0])
+    File "effect/_base.py", line 78, in guard
+      return (False, f(*args, **kwargs))
+    File "effect/do.py", line 121, in <lambda>
+      error=lambda e: _do(e, generator, True))
+    File "effect/do.py", line 98, in _do
+      val = generator.throw(*result)
+    File "<interactive-shell>", line 6, in execute_function
+    File "effect/_base.py", line 150, in _perform
+      performer = dispatcher(effect.intent)
+    File "effect/testing.py", line 108, in dispatcher
+      intent, fmt_log()))
+  AssertionError: Performer not found: <GetIntent object at 0x7fff0000>! Log follows:
+  {{{
+  fallback: Func(func=<function do_execute_function at 0x7fff0001>, args=(), kwargs={})
+  NOT FOUND: <GetIntent object at 0x7fff0000>
+  NEXT EXPECTED: <GetIntent object at 0x7fff0002>
+  }}}
+  ...
+    
 
 .. There is another directive: .. testoutput:: if testinputs have outputs
