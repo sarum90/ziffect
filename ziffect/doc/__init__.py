@@ -1,7 +1,7 @@
 
 import re
 import testtools.run
-import StringIO
+from six import StringIO
 
 
 def cleanup(lines):
@@ -32,7 +32,7 @@ def cleanup(lines):
 
 
 def run_test(test_case):
-    output = StringIO.StringIO()
+    output = StringIO()
     loader = testtools.run.defaultTestLoader
     tests = loader.loadTestsFromTestCase(test_case)
     runner = testtools.run.TestToolsTestRunner(stdout=output)
@@ -42,13 +42,13 @@ def run_test(test_case):
 
     if results.failures:
         test_case, desc = results.failures[0]
-        badness = 'FAILURE({})\n{}'.format(
+        badness = 'FAILURE(%s)\n%s' % (
             test_case._testMethodName,
             cleanup(desc)
         )
     elif results.errors:
         test_case, desc = results.errors[0]
-        badness = 'ERROR({})\n{}'.format(
+        badness = 'ERROR(%s)\n%s' % (
             test_case._testMethodName,
             cleanup(desc)
         )
