@@ -6,6 +6,9 @@ all: doc test
 
 test: unittest doctest
 
+tox:
+	tox
+
 unittest:
 	nosetests --nocapture ziffect/tests/basic_usage.py
 
