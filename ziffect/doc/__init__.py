@@ -36,10 +36,12 @@ def cleanup(lines):
     skip = 0
     for line in lines.splitlines():
         if not skip:
-            if 'fallback: Func(' in line:
+            if '__exit__' in line:
+                skip = 2
+            elif 'fallback: Func(' in line:
                 skip = 1
-        if not skip:
-            line, skip = clean_filename(line)
+            else:
+                line, skip = clean_filename(line)
         if skip > 0:
             skip -= 1
             continue

@@ -32,7 +32,21 @@ use case for our new toy.
   from __future__ import print_function
 
   import json
-  from uuid import uuid4
+  import hashlib
+  from uuid import UUID, uuid1
+  from six import int2byte
+
+  _seed = [1]
+
+  def get_random():
+    _seed[0] += 1
+    h = hashlib.md5()
+    h.update(b"ziffect")
+    h.update(int2byte(_seed[0]))
+    return h.digest()
+
+  def uuid4():
+    return UUID(bytes=get_random())
 
   from pyrsistent import PClass, field
   from six import text_type
@@ -40,13 +54,17 @@ use case for our new toy.
 
   LATEST=-1
 
+  def rev_render(rev):
+    if rev == LATEST:
+      return 'LATEST'
+    return text_type(rev)
+
   class DBStatus(object):
     NOT_FOUND = u'NOT_FOUND'
     OK = u'OK'
     CONFLICT = u'CONFLICT'
     BAD_REQUEST = u'BAD_REQUEST'
-    # Unused, but is next logical step:
-    # NETWORK_ERROR = u'NETWORK_ERROR'
+    NETWORK_ERROR = u'NETWORK_ERROR'
 
   class DBResponse(PClass):
     status = field(type=text_type)
@@ -291,10 +309,10 @@ unit tests. They should fail, then we'll fix the implementation of
       doc_1_u = {"test": "doc", "a": 2}
       seq = [
         (GetIntent(doc_id),
-          lambda _: DBResponse(DBStatus.OK, 0, doc_1)),
+          lambda _: DBResponse(status=DBStatus.OK, rev=0, doc=doc_1)),
 
-        (UpdateIntent(doc_id, 1, doc_1_u),
-          lambda _: DBResponse(DBStatus.OK)),
+        (UpdateIntent(doc_id, 0, doc_1_u),
+          lambda _: DBResponse(status=DBStatus.OK)),
       ]
       perform_sequence(seq, execute_function(
           doc_id, lambda x: dict(x, a=x.get("a", 0) + 1)
@@ -309,16 +327,16 @@ unit tests. They should fail, then we'll fix the implementation of
       doc_2_u = {"test": "doc2", "a": 6}
       seq = [
         (GetIntent(doc_id),
-          lambda _: DBResponse(DBStatus.OK, 0, doc_1)),
+          lambda _: DBResponse(status=DBStatus.OK, rev=0, doc=doc_1)),
 
-        (UpdateIntent(doc_id, 1, doc_1_u),
-          lambda _: DBResponse(DBStatus.CONFLICT)),
+        (UpdateIntent(doc_id, 0, doc_1_u),
+          lambda _: DBResponse(status=DBStatus.CONFLICT)),
 
         (GetIntent(doc_id),
-          lambda _: DBResponse(DBStatus.OK, 1, doc_2)),
+          lambda _: DBResponse(status=DBStatus.OK, rev=1, doc=doc_2)),
 
-        (UpdateIntent(doc_id, 2, doc_2_u),
-          lambda _: DBResponse(DBStatus.OK)),
+        (UpdateIntent(doc_id, 1, doc_2_u),
+          lambda _: DBResponse(status=DBStatus.OK)),
       ]
       perform_sequence(seq, execute_function(
           doc_id, lambda x: dict(x, a=x.get("a", 0) + 1)
@@ -354,6 +372,166 @@ Now a few iterations of TDD:
   NEXT EXPECTED: <GetIntent object at 0x7fff0001>
   }}}
   ...
-    
+
+First bug: Intents need to have valid ``__eq__`` implementations. Also let's give
+them a ``__repr__`` that makes them slightly less hard to work with.
+
+.. testcode:: effect_implementation
+
+  class GetIntent(object):
+    def __init__(self, doc_id, rev=LATEST):
+      self.doc_id = doc_id
+      self.rev = rev
+  
+    def __eq__(self, other):
+      return (
+        type(self) == type(other) and
+        self.doc_id == other.doc_id and
+        self.rev == other.rev
+      )
+
+    def __repr__(self):
+      return 'GetIntent<%s, %s>' % (
+        rev_render(self.rev), self.doc_id)
+
+
+  class UpdateIntent(object):
+    def __init__(self, doc_id, rev, doc):
+      self.doc_id = doc_id
+      self.rev = rev
+      self.doc = doc
+
+    def __eq__(self, other):
+      return (
+        type(self) == type(other) and
+        self.doc_id == other.doc_id and
+        self.rev == other.rev and
+        self.doc == other.doc
+      )
+
+    def __repr__(self):
+      return 'UpdateIntent<%s, %s, %s>' % (
+        rev_render(self.rev),
+        self.doc_id,
+        json.dumps(self.doc, sort_keys=True)
+      )
+
+Rerun the tests:
+
+.. doctest:: effect_implementation
+
+  >>> run_test(DBExecuteFunctionTests)
+  FAILURE(test_sad_case)
+  Traceback (most recent call last):
+    File "<interactive-shell>", line 41, in test_sad_case
+    File "effect/testing.py", line 115, in perform_sequence
+      return sync_perform(dispatcher, eff)
+    File "effect/testing.py", line 463, in consume
+      [x[0] for x in self.sequence]))
+  AssertionError: Not all intents were performed: [GetIntent<LATEST, f456150c-d4ba-5b09-a3fc-7ce3a7dbe905>, UpdateIntent<1, f456150c-d4ba-5b09-a3fc-7ce3a7dbe905, {"a": 6, "test": "doc2"}>]
+  ...
+
+
+Cool, now that we have a failing test, lets improve our implementation to
+handle the case where the DB was updated while we were running:
+
+.. testcode:: effect_implementation
+
+  @do
+  def execute_function(doc_id, pure_function):
+    done = False
+    while not done:
+      original_doc = yield Effect(GetIntent(doc_id=doc_id))
+      new_doc = pure_function(original_doc.doc)
+      update_result = yield Effect(
+        UpdateIntent(doc_id, original_doc.rev, new_doc))
+      done = (update_result.status == DBStatus.OK)
+
+Rerun the tests:
+
+.. doctest:: effect_implementation
+
+  >>> run_test(DBExecuteFunctionTests)
+  [OK]
+
+Okay, so that all seems reasonable. This style of testing reminds me a lot of
+mocks. I am creating a canned sequence of expected inputs and return values for
+my dependencies, and running my code under test using this canned dependency.
+
+
+.. admonition:: Aside
+  :class: hint
+
+  I'm sure you can search the internet for debates of mocks versus fakes and
+  find out more about the issues that some people have with mocks. In my view,
+  two of the best arguments against mocks are:
+
+  - Does the mock sufficiently behave like a real implementation so that the
+    test is meaningful? This is particularly pertinent in python, because
+    something simple like, "your mock does not return the correct type of
+    value" might mean that your unit test fails to catch a ``TypeError`` that
+    will always happen with the real implementation. 
+  - Mocks create tests that are tightly tied to the implementation of the code
+    under test; if the implementation is changed, the test must also be
+    modified.  Consider, for instance, if we add a 2nd GetIntent to the
+    beginning of the implementation, it should not change the correctness, but
+    the test would now fail without modification. Specifically the sequence
+    that is passed to perform_sequence would need a second GetIntent call at
+    the beginning of the sequence.
+
+  Personally, I think mocks do have a place in unit tests like the one above.
+  Specifically you are interfacing with an API that can return different values
+  for the same inputs, and you need to force some external state change at a
+  specific time in order to force the different inputs.
+
+  There are other strategies to do similar testing, but as long as you have a
+  solid, simple interface to mock, I believe that form of testing gets the most
+  bang for your buck.
+
+Let's build on our existing implementation. Let's say after using this code for
+awhile we realize that the DB commands can also return a ``NETWORK_ERROR``.
+We are going to take the simple policy of retrying any attempt that results in
+a ``NETWORK_ERROR``. We are not going to bother with exponential back-off or
+any other nice-to-have right now, just a dead simply retry.
+
+.. admonition:: Aside
+  :class: hint
+
+  Assuming that ``NETWORK_ERRORS`` can happen before or after an operation is
+  complete, this has some interesting ramifications. Our implementation of
+  :func:`execute_function` will be an at-least-once implementation, where it
+  guarantees that the function you specified will have occured at least once on
+  the doc_id specified. A poorly timed ``NETWORK_ERROR`` after a successful
+  update will cause our code to retry the update, get a conflict, and cycle
+  through the code again.
+
+Simple test:
+
+  class DBExecuteNetworkErrorTests(TestCase):
+
+    def test_netword_error(self):
+      doc_id = uuid4()
+      doc_1 = {"test": "doc", "a": 1}
+      doc_1_u = {"test": "doc", "a": 2}
+      seq = [
+        (GetIntent(doc_id),
+          lambda _: DBResponse(status=DBStatus.NETWORK_ERROR)),
+
+        (GetIntent(doc_id),
+          lambda _: DBResponse(status=DBStatus.OK, rev=0, doc=doc_1)),
+
+        (UpdateIntent(doc_id, 0, doc_1_u),
+          lambda _: DBResponse(status=DBStatus.NETWORK_ERROR)),
+
+        (UpdateIntent(doc_id, 0, doc_1_u),
+          lambda _: DBResponse(status=DBStatus.OK)),
+      ]
+      perform_sequence(seq, execute_function(
+          doc_id, lambda x: dict(x, a=x.get("a", 0) + 1)
+        )
+      )
+
+Test Failure:
+
 
 .. There is another directive: .. testoutput:: if testinputs have outputs
