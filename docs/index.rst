@@ -12,6 +12,8 @@ Contents:
    :maxdepth: 2
 
    introduction
+   using_effect
+   using_ziffect
    api
 
 Indices and tables
