@@ -40,6 +40,19 @@ def cleanup(lines):
             skip = 2
         return line, skip
 
+    def sort_dicts(match):
+        def texless_repr(x):
+            y = repr(x)
+            if y.startswith(r"u'"):
+                return y[1:]
+            return y
+
+        in_dict = match.group(0)
+        v = eval(in_dict)
+        return '{%s}' % (
+            ', '.join('%s: %s' % (texless_repr(k), texless_repr(v[k]))
+                      for k in sorted(list(v.keys()))))
+
     skip = 0
     for line in lines.splitlines():
         if not skip:
@@ -54,6 +67,7 @@ def cleanup(lines):
             continue
         line = re.sub(r'0x[0-9a-f]*', get_print_addr, line)
         line = line.replace(r'__builtin__.', r'')
+        line = re.sub(r'{[^\{\}]*}', sort_dicts, line)
         result.append(line)
 
     return '\n'.join(result)
