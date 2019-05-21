@@ -7,6 +7,7 @@ from six import text_type
 from effect import sync_perform
 
 import ziffect
+import ziffect.matchers
 
 
 @ziffect.interface
